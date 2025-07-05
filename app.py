@@ -42,6 +42,157 @@ This tool helps marketing teams visualize conversion drop-offs from Google Ads t
 # Sidebar configuration
 st.sidebar.header("⚙️ Analysis Configuration")
 
+# Data input method selector
+data_input_method = st.sidebar.selectbox(
+    "Data Input Method",
+    ["Manual Entry", "CSV Upload", "API Integration", "Demo Data"],
+    index=0,
+    help="Choose how you want to input your funnel data"
+)
+
+st.sidebar.markdown("---")
+
+# Initialize variables to avoid scope issues
+manual_funnel_data = None
+csv_funnel_data = None
+api_funnel_data = None
+time_period = "Last 30 Days"
+traffic_source = ["Google Ads", "Facebook Ads"]
+
+# Data input section based on selected method
+if data_input_method == "Manual Entry":
+    st.sidebar.subheader("📝 Enter Your Data")
+    
+    visitor_count = st.sidebar.number_input(
+        "Visitors",
+        min_value=1,
+        value=1000,
+        help="Total number of visitors"
+    )
+    
+    lead_count = st.sidebar.number_input(
+        "Leads",
+        min_value=1,
+        value=250,
+        max_value=visitor_count,
+        help="Number of leads generated"
+    )
+    
+    mql_count = st.sidebar.number_input(
+        "MQLs (Marketing Qualified Leads)",
+        min_value=1,
+        value=125,
+        max_value=lead_count,
+        help="Number of marketing qualified leads"
+    )
+    
+    sql_count = st.sidebar.number_input(
+        "SQLs (Sales Qualified Leads)",
+        min_value=1,
+        value=50,
+        max_value=mql_count,
+        help="Number of sales qualified leads"
+    )
+    
+    # Store manual data
+    manual_funnel_data = {
+        'Visitor': visitor_count,
+        'Lead': lead_count,
+        'MQL': mql_count,
+        'SQL': sql_count
+    }
+
+elif data_input_method == "CSV Upload":
+    st.sidebar.subheader("📁 Upload CSV File")
+    
+    # Sample CSV template download
+    sample_csv = """Stage,Count
+Visitor,1000
+Lead,250
+MQL,125
+SQL,50"""
+    
+    st.sidebar.download_button(
+        label="📥 Download CSV Template",
+        data=sample_csv,
+        file_name="funnel_data_template.csv",
+        mime="text/csv",
+        help="Download this template to format your data correctly"
+    )
+    
+    uploaded_file = st.sidebar.file_uploader(
+        "Upload funnel data CSV",
+        type=['csv'],
+        help="CSV should have columns: Stage, Count"
+    )
+    
+    if uploaded_file:
+        try:
+            csv_data = pd.read_csv(uploaded_file)
+            if 'Stage' in csv_data.columns and 'Count' in csv_data.columns:
+                csv_funnel_data = dict(zip(csv_data['Stage'], csv_data['Count']))
+                st.sidebar.success("CSV uploaded successfully!")
+                st.sidebar.write("Data preview:")
+                st.sidebar.dataframe(csv_data)
+            else:
+                st.sidebar.error("CSV must have 'Stage' and 'Count' columns")
+                csv_funnel_data = None
+        except Exception as e:
+            st.sidebar.error(f"Error reading CSV: {str(e)}")
+            csv_funnel_data = None
+    else:
+        csv_funnel_data = None
+        st.sidebar.info("Please upload a CSV file with your funnel data")
+
+elif data_input_method == "API Integration":
+    st.sidebar.subheader("🔗 API Integration")
+    
+    api_platform = st.sidebar.selectbox(
+        "Platform",
+        ["Google Ads", "Facebook Ads", "HubSpot", "Salesforce", "Custom API"],
+        help="Select your data source platform"
+    )
+    
+    if api_platform == "Google Ads":
+        st.sidebar.info("Google Ads integration requires API credentials")
+        google_ads_customer_id = st.sidebar.text_input("Customer ID", placeholder="123-456-7890")
+        
+    elif api_platform == "HubSpot":
+        st.sidebar.info("HubSpot integration requires API token")
+        hubspot_token = st.sidebar.text_input("API Token", type="password")
+        
+    elif api_platform == "Salesforce":
+        st.sidebar.info("Salesforce integration requires OAuth setup")
+        sf_username = st.sidebar.text_input("Username")
+        sf_password = st.sidebar.text_input("Password", type="password")
+        
+    elif api_platform == "Custom API":
+        st.sidebar.info("Custom API integration")
+        custom_api_url = st.sidebar.text_input("API Endpoint URL")
+        custom_api_key = st.sidebar.text_input("API Key", type="password")
+    
+    st.sidebar.warning("API integrations require additional setup. Contact support for assistance.")
+    api_funnel_data = None
+
+else:  # Demo Data
+    st.sidebar.subheader("🎯 Demo Configuration")
+    
+    # Time period selector
+    time_period = st.sidebar.selectbox(
+        "Analysis Period",
+        ["Last 7 Days", "Last 30 Days", "Last 90 Days"],
+        index=1
+    )
+    
+    # Traffic source filter
+    traffic_source = st.sidebar.multiselect(
+        "Traffic Sources",
+        ["Google Ads", "Facebook Ads", "Organic", "Direct", "Email"],
+        default=["Google Ads", "Facebook Ads"]
+    )
+
+st.sidebar.markdown("---")
+
 # Drop-off threshold slider
 threshold = st.sidebar.slider(
     "Drop-off Alert Threshold (%)",
@@ -52,36 +203,51 @@ threshold = st.sidebar.slider(
     help="Flag stages where conversion drops by more than this percentage"
 )
 
-# Time period selector
-time_period = st.sidebar.selectbox(
-    "Analysis Period",
-    ["Last 7 Days", "Last 30 Days", "Last 90 Days"],
-    index=1
-)
-
-# Traffic source filter
-traffic_source = st.sidebar.multiselect(
-    "Traffic Sources",
-    ["Google Ads", "Facebook Ads", "Organic", "Direct", "Email"],
-    default=["Google Ads", "Facebook Ads"]
-)
-
 st.sidebar.markdown("---")
 
 # Run Analysis button
-if st.sidebar.button("🚀 Run Analysis", type="primary", use_container_width=True):
+analyze_button_enabled = True
+button_help = "Click to analyze your funnel data"
+
+# Check if we have data to analyze
+if data_input_method == "Manual Entry":
+    funnel_data_ready = manual_funnel_data
+elif data_input_method == "CSV Upload":
+    funnel_data_ready = csv_funnel_data
+    if not csv_funnel_data:
+        analyze_button_enabled = False
+        button_help = "Please upload a CSV file first"
+elif data_input_method == "API Integration":
+    funnel_data_ready = api_funnel_data
+    analyze_button_enabled = False
+    button_help = "API integration not yet implemented"
+else:  # Demo Data
+    funnel_data_ready = None
+
+if st.sidebar.button("🚀 Run Analysis", type="primary", use_container_width=True, disabled=not analyze_button_enabled, help=button_help):
     with st.spinner("Analyzing funnel data..."):
-        # Generate mock data based on selections
-        funnel_data = data_generator.generate_funnel_data(
-            time_period=time_period,
-            traffic_sources=traffic_source
-        )
+        # Get funnel data based on input method
+        if data_input_method == "Manual Entry":
+            funnel_data = manual_funnel_data
+        elif data_input_method == "CSV Upload":
+            funnel_data = csv_funnel_data
+        elif data_input_method == "Demo Data":
+            # Generate mock data based on selections
+            funnel_data = data_generator.generate_funnel_data(
+                time_period=time_period,
+                traffic_sources=traffic_source
+            )
+        else:
+            st.error("Selected data input method not yet supported")
+            funnel_data = None
         
-        # Store in session state
-        st.session_state.funnel_data = funnel_data
-        st.session_state.threshold = threshold
-        st.session_state.analysis_complete = True
-        st.session_state.timestamp = datetime.now()
+        if funnel_data:
+            # Store in session state
+            st.session_state.funnel_data = funnel_data
+            st.session_state.threshold = threshold
+            st.session_state.analysis_complete = True
+            st.session_state.timestamp = datetime.now()
+            st.session_state.data_input_method = data_input_method
 
 # Check if analysis has been run
 if hasattr(st.session_state, 'analysis_complete') and st.session_state.analysis_complete:
@@ -312,8 +478,47 @@ Issues:
         )
 
 else:
-    # Initial state - show sample data and instructions
-    st.info("👆 Configure your analysis settings in the sidebar and click **'Run Analysis'** to get started!")
+    # Initial state - show data input instructions
+    st.info("👆 Choose your data input method in the sidebar and click **'Run Analysis'** to get started!")
+    
+    # Show data input options
+    st.subheader("📊 How to Input Your Data")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown("""
+        **📝 Manual Entry**
+        - Enter your funnel numbers directly
+        - Perfect for quick analysis
+        - Visitors → Leads → MQLs → SQLs
+        """)
+    
+    with col2:
+        st.markdown("""
+        **📁 CSV Upload**
+        - Upload your data from Excel/Google Sheets
+        - Download the CSV template
+        - Bulk data import
+        """)
+    
+    with col3:
+        st.markdown("""
+        **🔗 API Integration**
+        - Connect to your CRM/Ad platforms
+        - Google Ads, HubSpot, Salesforce
+        - Real-time data sync
+        """)
+    
+    with col4:
+        st.markdown("""
+        **🎯 Demo Data**
+        - Test with sample data
+        - See all features in action
+        - Perfect for evaluation
+        """)
+    
+    st.markdown("---")
     
     # Show sample funnel visualization
     st.subheader("📊 Sample Funnel Visualization")
